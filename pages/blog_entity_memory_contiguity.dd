@@ -12,13 +12,13 @@ So, what do we do? It can sometimes depend on the team's organizational structur
 
 Well, you can think of an entity as just a unit of this so-called @i "stuff". It is a generic term—it doesn't necessarily have a direct equivalent in the game's code. It is just a way to refer to some "unit of stuff".
 
-These entities usually aren't static—they are normally mutating and interacting with each other as time progresses. Part of the reason why games are interesting at all, in fact, is @i "because" of these mutations and complicated interactions.
+These entities usually aren't static—they are normally mutating and interacting with each other as time progresses. Part of the reason why games are interesting at all, in fact, is @i "because" of these mutations and complicated interactions. Mutation and interaction is what makes a world feel @i "real".
 
-What does this mean for our (the people programming the game) job? Ultimately, it breaks down into a set of data transformations. Each frame we have some input entity state, and some output entity state. If we are trying to be smart about the way we do that, we'll consider the kinds of transformations that need to happen, and we'll architect a system around that.
+What does this mean for our (the people programming the game's) job? Ultimately, it breaks down into a set of data transformations. Each frame we have some input entity state, and some output entity state. If we are trying to be smart about the way we do that, we'll consider the kinds of transformations that need to happen, and we'll architect a system around that.
 
-A short aside: this doesn't necessarily mean a specific system for all cases, The concept of an "entity component system" is very popular nowadays, but in my experience this architecture is not a "one size fits all" solution. It lends itself well to some ideas, and worse to others. This is also why, in my estimation, it is not a good idea for a game engine that supports many possible games to enforce this kind of design structure on gameplay code, because it constrains design ideas. But I digress...
+A short aside: this doesn't necessarily mean a specific system for all cases. The concept of an "entity component system" is very popular nowadays, but in my experience this architecture is not a "one size fits all" solution. It lends itself well to some ideas, and worse to others. This is also why, in my estimation, it is not a good idea for a game engine that supports many possible games to enforce this kind of design structure on gameplay code, because it constrains design ideas. But I digress...
 
-What I'm getting at is that almost all entities need @i "state", which means they need @i "memory" to store that state. So, what do we do? Well, we allocate some memory:
+What I'm getting at is that almost all entities need @i "state", which means they need @i "memory" to store that state. So, what do we do? Well, we can start by allocating some memory:
 """
 
 @code
@@ -40,9 +40,9 @@ HealthComponent *health = Allocate(MAX_ENTITIES * sizeof(*health));
 """
 In that case, we could pick and choose which streams of entity data we want to feed into different transformation pipelines, which may or may not work better for our scenario.
 
-That all being said, for the remainder of this blog post, I'm going to stick with the simpler "struct per entity" model I showed first, because it is simpler to write about, and the concepts I will speak about trivially map to the component-based allocation structure. In fact, I encountered this subject while working on The Melodist, which does use a component-based allocation structure for entities, but the specific implementation details of that system are more appropriate for another blog post.
+That all being said, for the remainder of this blog post, I'm going to stick with the simpler "struct per entity" model I showed first, because it is simpler to write about, and the concepts I will speak about trivially map to the component-based allocation structure. In fact, I encountered this subject while working on The Melodist, which does use a component-based allocation structure for entities, but the specific implementation details of that system (and how I feel that it was a mistake now) are more appropriate for another blog post.
 
-Alright, wonderful, —we've got memory for our entities. I can already hear some complaints, though... “What is @code "MAX_ENTITIES"? Why are you doing one contiguous allocation and then calling it good? How does this work for small maps without being wasteful, but scale to large maps?”
+Alright, wonderful—we've got memory for our entities. I can already hear some complaints, though... “What is @code "MAX_ENTITIES"? Why are you doing one contiguous allocation and then calling it good? How does this work for small maps without being wasteful, but scale to large maps?”
 
 This might bridge into philosophical differences, but I have a couple of responses to these questions. In my projects, I define a harsh limit like this because the engine is trying to solve the hard problems in making the game run—that is, making the @i "largest, most intensive" places in the world run smoothly. @code "MAX_ENTITIES" should be large enough to support these most intensive places.
 
@@ -55,15 +55,14 @@ Additionally, it is very unlikely on modern machines that entity memory storage 
 So, we'll continue forward with the understanding that we have some fix-sized buffer for entity storage. How do we organize entities inside of this buffer, assuming we are not using all of the slots?
 
 When first considering this problem in The Melodist, I started with the understanding that entity memory should be contiguous—that is, for each entity (besides the last active entity in the set), there is an active entity immediately following in memory, such that an update routine can simply loop from the 0th element to the nth element (where @i"n" is the number of entities we consider to "exist"), and work on each entity:
-
 """
 
 @code
 """
 for(u32 i = 0; i < entity_count; ++i)
 {
-    Entity *entity = entities + i;
-    // Work on entity
+  Entity *entity = entities + i;
+  // Work on entity
 }
 """
 
@@ -84,7 +83,7 @@ So... what do we do?
 
 The approach that I took looked like this: I introduced some form of ID that I can guarantee will never change. Then, I stored a centralized table that maps these IDs to indices, and then any time I'd like to persistently keep track of an entity, I could just hold on to its ID, and then resolve that ID down to which index that entity exists at later, when I actually have to get or modify the associated entity's information.
 
-Enter: Asynchronous Assets.
+Enter: Asynchronously Loaded Assets.
 
 Suppose now that you're in a situation where you don't know which assets you need before something (like a map) loads. In The Melodist, this normally would not be a problem, because the game knows upfront (when loading a map) which entities are necessary, and therefore the assets that it must load. So, when a map loads, we could just wait until all of the required assets are loaded, either by dispatching jobs to load them on worker threads, or just doing it on the main thread and waiting. The Melodist uses the first option, though, because generally the main thread should not stall at all for whatever reason, to prevent audio and game hiccups (the music, synthesis, and audio mixing all happen on the main thread).
 
@@ -111,7 +110,7 @@ So, let's recap. The problem I presented was keeping entity memory contiguous, a
 
 """
 
-This is a lot of state to keep track of, and there's a lot of code that goes into making sure it is correctly maintained and used. This bothered me, and cost me a lot of debugging time in The Melodist.
+This is a lot of state to keep track of, and there's a lot of code that goes into making sure it is correctly maintained and used. This bothered me, and cost me a lot of debugging time in The Melodist. It also added a lot of state that had to be correct inside of a map file, and the more state that is required that must remain correct, the more chances there are for corruption, and the more difficult the system is to debug. Ideally, something like an index-to-ID and ID-to-index table could be produced from scratch given a set of entities. There was probably a better solution here than what I ended up doing, so I think my choices made a lot of this worse, but nonetheless it is a problem that requires solving.
 
 Now, I'll pose a question that I wrestled with when brainstorming about simpler solutions... Why do we care about entity memory being contiguous? What are the benefits that this option provides? What case does it optimize for?
 
@@ -125,7 +124,7 @@ It shouldn't be too unclear—contiguous memory lets a loop over entities early-
 // entity_count could be much less than MAX_ENTITIES.
 for(u32 i = 0; i < entity_count; ++i)
 {
-    // Do something with entities[i]
+  // Do something with entities[i]
 }
 """
 
@@ -137,11 +136,11 @@ This seems obviously better for cases where @code "entity_count" is much less th
 """
 for(u32 i = 0; i < MAX_ENTITIES; ++i)
 {
-    if(entity_flags[i] & EntityFlag_Active)
-    {
-        // Do something with entities[i]...
-        // If and only if it's marked as active.
-    }
+  if(entity_flags[i] & EntityFlag_Active)
+  {
+    // Do something with entities[i]...
+    // If and only if it's marked as active.
+  }
 }
 """
 
@@ -151,21 +150,25 @@ So, what've we done here? We'll get to the performance analysis in a bit, but we
 
 @code
 """
-Entity *GetNextEntity(Entity *entity)
+b32 IncrementEntity(Entity **entity_ptr)
 {
-    Entity *result = 0;
-    
-    u32 entity_index = entity - entities;
-    for(; entity_index < MAX_ENTITIES; ++entity_index)
+  Entity *entity = *entity_ptr;
+  u32 start_index = 0;
+  if(entity != 0)
+  {
+    start_index = (entity - entities) + 1;
+  }
+  entity = 0;
+  for(u32 idx = start_index; idx < MAX_ENTITIES; idx += 1)
+  {
+    if(entity_flags[idx] & EntityFlag_Active)
     {
-        if(entity_flags[entity_index] & EntityFlag_Active)
-        {
-            result = entities + entity_index;
-            break;
-        }
+      entity = entities + idx;
+      break;
     }
-    
-    return result;
+  }
+  *entity_ptr = entity;
+  return !!entity;
 }
 """
 
@@ -175,9 +178,9 @@ This function allows us to rewrite our loop as follows:
 
 @code
 """
-for(Entity *entity = 0; entity = GetNextEntity(entity);)
+for(Entity *entity = 0; IncrementEntity(&entity);)
 {
-    // Use entity
+  // Use entity
 }
 """
 
@@ -191,17 +194,17 @@ We can't take pointers to non-permanent entities, however, because that entity c
 
 @code
 """
-EntityHandle handle = EntityHandleInit(entity);
+EntityHandle handle = HandleFromEntity(entity);
 // Later...
-Entity *entity = GetEntityFromHandle(handle);
+Entity *entity = EntityFromHandle(handle);
 if(entity)
 {
-    // Entity pointer was properly resolved.
+  // Entity pointer was properly resolved.
 }
 else
 {
-    // Entity handle was invalid or out-of-date, so we don't
-    // have a valid entity anymore.
+  // Entity handle was invalid or out-of-date, so we don't
+  // have a valid entity anymore.
 }
 """
 
@@ -235,15 +238,15 @@ Each entity is 128 bytes wide (two cache lines). I wrote two bogus procedures th
 """
 int DoEntityWork_Piggy(Entity *entity)
 {
-    int sum = 0;
-    for(int i = 0; i < sizeof(entity->data); ++i)
-    {
-        sum += entity->data[i];
-    }
-    entity->data[0] = 1;
-    entity->data[66] = 2;
-    entity->data[119] = 3;
-    return sum;
+  int sum = 0;
+  for(int i = 0; i < sizeof(entity->data); ++i)
+  {
+    sum += entity->data[i];
+  }
+  entity->data[0] = 1;
+  entity->data[66] = 2;
+  entity->data[119] = 3;
+  return sum;
 }
 """
 
@@ -253,9 +256,9 @@ This procedure takes ~560 cycles on my machine, so it's just meant to serve as s
 
 @code
 """
-int DoEntityWork_WeightWatchers(Entity *entity)
+int DoEntityWork_Slim(Entity *entity)
 {
-    return entity->data[0] + 25;
+  return entity->data[0] + 25;
 }
 """
 
@@ -268,17 +271,17 @@ First, let's see how much work goes into iterating a completely empty set of ent
 @code
 """
 Empty Case (Contiguous, Piggy):
-1024 iterations, 27.488281 cycles (average)
+  1024 iterations, 27.488281 cycles (average)
 Empty Case (Sparse, Piggy):
-1024 iterations, 18786.892578 cycles (average)
+  1024 iterations, 18786.892578 cycles (average)
 Empty Case (Sparse with Iteration List, Piggy):
-1024 iterations, 27.524414 cycles (average)
+  1024 iterations, 27.524414 cycles (average)
 Empty Case (Contiguous, Weight Watchers):
-1024 iterations, 27.464844 cycles (average)
+  1024 iterations, 27.464844 cycles (average)
 Empty Case (Sparse, Weight Watchers):
-1024 iterations, 22555.677734 cycles (average)
+  1024 iterations, 22555.677734 cycles (average)
 Empty Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 25.426758 cycles (average)
+  1024 iterations, 25.426758 cycles (average)
 """
 
 """
@@ -292,17 +295,17 @@ How does the update over an empty entity batch compare with a @i"full" batch of 
 @code
 """
 Full Case (Contiguous, Piggy):
-1024 iterations, 2164290.577148 cycles (average)
+  1024 iterations, 2164290.577148 cycles (average)
 Full Case (Sparse, Piggy):
-1024 iterations, 2172001.588867 cycles (average)
+  1024 iterations, 2172001.588867 cycles (average)
 Full Case (Sparse with Iteration List, Piggy):
-1024 iterations, 2189763.810547 cycles (average)
+  1024 iterations, 2189763.810547 cycles (average)
 Full Case (Contiguous, Weight Watchers):
-1024 iterations, 26667.936523 cycles (average)
+  1024 iterations, 26667.936523 cycles (average)
 Full Case (Sparse, Weight Watchers):
-1024 iterations, 32269.322266 cycles (average)
+  1024 iterations, 32269.322266 cycles (average)
 Full Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 31268.362305 cycles (average)
+  1024 iterations, 31268.362305 cycles (average)
 """
 
 """
@@ -320,17 +323,17 @@ This covers the two extremes—when we've got no entities, or when we've got as 
 @code
 """
 Half-Full, Worst Case (Contiguous, Piggy):
-1024 iterations, 1114799.429688 cycles (average)
+  1024 iterations, 1114799.429688 cycles (average)
 Half-Full, Worst Case (Sparse, Piggy):
-1024 iterations, 1099689.594727 cycles (average)
+  1024 iterations, 1099689.594727 cycles (average)
 Half-Full, Worst Case (Sparse with Iteration List, Piggy):
-1024 iterations, 1108070.508789 cycles (average)
+  1024 iterations, 1108070.508789 cycles (average)
 Half-Full, Worst Case (Contiguous, Weight Watchers):
-1024 iterations, 13159.281250 cycles (average)
+  1024 iterations, 13159.281250 cycles (average)
 Half-Full, Worst Case (Sparse, Weight Watchers):
-1024 iterations, 29817.289062 cycles (average)
+  1024 iterations, 29817.289062 cycles (average)
 Half-Full, Worst Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 16059.382812 cycles (average)
+  1024 iterations, 16059.382812 cycles (average)
 """
 
 """
@@ -354,7 +357,7 @@ I would suggest the following as a TL;DR for independent developers of smaller-s
 
 The best way to solve pointer invalidation is to not invalidate pointers, and sparse entity storage is a very useful tool in doing that; while it does have a (relatively inexpensive) price, it helps us solve an entire set of problems (pointer invalidation) in a much simpler way. When it comes to performance, games in this space can, @i "as a whole", probably afford substantially more than a 10 microsecond penalty on an entity update tick.
 
-To wrap everything up: keep it simple whenever possible, avoid problems by not causing them, and understand your constraints.
+To wrap everything up, the things I've learned from all of this, and by doing what I'd call the @i "wrong" thing in The Melodist first, are: keep it simple whenever possible, avoid problems by not causing them, and understand your constraints.
 
 Thanks for reading!
 """

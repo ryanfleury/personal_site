@@ -35,10 +35,10 @@
 Traditional games tend to have a lot of stuff. When we design games, we like to be detail-oriented—not only because we care about our games and want to realize our ideas fully, but also because it seems to improve the player experience. Games have always been about bringing worlds to life, and in my estimation, the most interesting worlds to explore probably aren't empty.</p>
 <p class="paragraph">So, what do we do? It can sometimes depend on the team's organizational structure, but in general, the concept of an <i>entity</i> arises time and time again. So, what is an entity?</p>
 <p class="paragraph">Well, you can think of an entity as just a unit of this so-called <i>stuff</i>. It is a generic term—it doesn't necessarily have a direct equivalent in the game's code. It is just a way to refer to some "unit of stuff".</p>
-<p class="paragraph">These entities usually aren't static—they are normally mutating and interacting with each other as time progresses. Part of the reason why games are interesting at all, in fact, is <i>because</i> of these mutations and complicated interactions.</p>
-<p class="paragraph">What does this mean for our (the people programming the game) job? Ultimately, it breaks down into a set of data transformations. Each frame we have some input entity state, and some output entity state. If we are trying to be smart about the way we do that, we'll consider the kinds of transformations that need to happen, and we'll architect a system around that.</p>
-<p class="paragraph">A short aside: this doesn't necessarily mean a specific system for all cases, The concept of an "entity component system" is very popular nowadays, but in my experience this architecture is not a "one size fits all" solution. It lends itself well to some ideas, and worse to others. This is also why, in my estimation, it is not a good idea for a game engine that supports many possible games to enforce this kind of design structure on gameplay code, because it constrains design ideas. But I digress...</p>
-<p class="paragraph">What I'm getting at is that almost all entities need <i>state</i>, which means they need <i>memory</i> to store that state. So, what do we do? Well, we allocate some memory:
+<p class="paragraph">These entities usually aren't static—they are normally mutating and interacting with each other as time progresses. Part of the reason why games are interesting at all, in fact, is <i>because</i> of these mutations and complicated interactions. Mutation and interaction is what makes a world feel <i>real</i>.</p>
+<p class="paragraph">What does this mean for our (the people programming the game's) job? Ultimately, it breaks down into a set of data transformations. Each frame we have some input entity state, and some output entity state. If we are trying to be smart about the way we do that, we'll consider the kinds of transformations that need to happen, and we'll architect a system around that.</p>
+<p class="paragraph">A short aside: this doesn't necessarily mean a specific system for all cases. The concept of an "entity component system" is very popular nowadays, but in my experience this architecture is not a "one size fits all" solution. It lends itself well to some ideas, and worse to others. This is also why, in my estimation, it is not a good idea for a game engine that supports many possible games to enforce this kind of design structure on gameplay code, because it constrains design ideas. But I digress...</p>
+<p class="paragraph">What I'm getting at is that almost all entities need <i>state</i>, which means they need <i>memory</i> to store that state. So, what do we do? Well, we can start by allocating some memory:
 </p>
 <pre class="code">
 Entity *entities = Allocate(MAX_ENTITIES * sizeof(*entities));
@@ -53,19 +53,20 @@ HealthComponent *health = Allocate(MAX_ENTITIES * sizeof(*health));
 </pre>
 <p class="paragraph">
 In that case, we could pick and choose which streams of entity data we want to feed into different transformation pipelines, which may or may not work better for our scenario.</p>
-<p class="paragraph">That all being said, for the remainder of this blog post, I'm going to stick with the simpler "struct per entity" model I showed first, because it is simpler to write about, and the concepts I will speak about trivially map to the component-based allocation structure. In fact, I encountered this subject while working on <a class="link" href="melodist.html">The Melodist</a>, which does use a component-based allocation structure for entities, but the specific implementation details of that system are more appropriate for another blog post.</p>
-<p class="paragraph">Alright, wonderful, —we've got memory for our entities. I can already hear some complaints, though... “What is <span class="inline_code">MAX_ENTITIES</span>? Why are you doing one contiguous allocation and then calling it good? How does this work for small maps without being wasteful, but scale to large maps?”</p>
+<p class="paragraph">That all being said, for the remainder of this blog post, I'm going to stick with the simpler "struct per entity" model I showed first, because it is simpler to write about, and the concepts I will speak about trivially map to the component-based allocation structure. In fact, I encountered this subject while working on <a class="link" href="melodist.html">The Melodist</a>, which does use a component-based allocation structure for entities, but the specific implementation details of that system (and how I feel that it was a mistake now) are more appropriate for another blog post.</p>
+<p class="paragraph">Alright, wonderful—we've got memory for our entities. I can already hear some complaints, though... “What is <span class="inline_code">MAX_ENTITIES</span>? Why are you doing one contiguous allocation and then calling it good? How does this work for small maps without being wasteful, but scale to large maps?”</p>
 <p class="paragraph">This might bridge into philosophical differences, but I have a couple of responses to these questions. In my projects, I define a harsh limit like this because the engine is trying to solve the hard problems in making the game run—that is, making the <i>largest, most intensive</i> places in the world run smoothly. <span class="inline_code">MAX_ENTITIES</span> should be large enough to support these most intensive places.</p>
 <p class="paragraph">A user's machine should never be able to support the memory for one map or game world region, and not be able to support the memory for another one, and to ensure reliability as the user traverses the world, we should guarantee the availability of all memory required for any possible region upfront (so, within this philosophy, the <span class="inline_code">Allocate</span> call I used in earlier examples would probably be sub-allocating from an even larger block).</p>
 <p class="paragraph">One might respond "but the game should be able to run on lower-end machines". I am completely on board with this goal, but if some regions of the world can load into memory just fine, and others cannot, then the game <i>doesn't</i> run on lower-end machines, only <i>part</i> of the game does. Supplying <i>part</i> of the game to a theoretical device with absurdly low memory usage capabilities is not worth the reduction of reliability and simplicity offered by the alternative.</p>
 <p class="paragraph">Additionally, it is very unlikely on modern machines that entity memory storage will be the bottleneck on the number of entities that our engine can process. Memory is relatively cheap—it is far more likely that we will be living under some de facto harsh upper-bound of entities either way. Stated formally, there is some limit <i>n</i> of entities such that our game's physics is too slow, there is some limit <i>m</i> of entities such that our game's rendering is too slow, and there is some limit <i>o</i> of entities such that our game uses too much memory. Based on the characteristics of modern machines on which games are played, and based on the characteristics of modern games and their requirements, it is much more likely that <i>n</i> and <i>m</i> are smaller than <i>o</i>, than the other way around.</p>
 <p class="paragraph">So, we'll continue forward with the understanding that we have some fix-sized buffer for entity storage. How do we organize entities inside of this buffer, assuming we are not using all of the slots?</p>
-<p class="paragraph">When first considering this problem in <a class="link" href="melodist.html">The Melodist</a>, I started with the understanding that entity memory should be contiguous—that is, for each entity (besides the last active entity in the set), there is an active entity immediately following in memory, such that an update routine can simply loop from the 0th element to the nth element (where <i>n</i> is the number of entities we consider to "exist"), and work on each entity:</p>
+<p class="paragraph">When first considering this problem in <a class="link" href="melodist.html">The Melodist</a>, I started with the understanding that entity memory should be contiguous—that is, for each entity (besides the last active entity in the set), there is an active entity immediately following in memory, such that an update routine can simply loop from the 0th element to the nth element (where <i>n</i> is the number of entities we consider to "exist"), and work on each entity:
+</p>
 <pre class="code">
 for(u32 i = 0; i < entity_count; ++i)
 {
-    Entity *entity = entities + i;
-    // Work on entity
+  Entity *entity = entities + i;
+  // Work on entity
 }
 </pre>
 <p class="paragraph">
@@ -79,7 +80,7 @@ entities[entity_being_removed] = entities[entity_count];
 Now, you might be saying... "Alright, hang on. You just broke something". And you're right. In this system, if we ever have to refer to an entity persistently, we can't assume where it is in memory. If entities could not be removed, we could just keep the index of the entity around and persistently get the correct entity for some region... but not anymore. Now, if we assume any entity can be removed, we have no real way of knowing that some index is the actual entity we mean to refer to, because the <i>actual</i> entity we were hoping to refer to has either been removed, or deleted. In either case, we'd like to know about it—right now, however, we don't have any way to.</p>
 <p class="paragraph">So... what do we do?</p>
 <p class="paragraph">The approach that I took looked like this: I introduced some form of ID that I can guarantee will never change. Then, I stored a centralized table that maps these IDs to indices, and then any time I'd like to persistently keep track of an entity, I could just hold on to its ID, and then resolve that ID down to which index that entity exists at later, when I actually have to get or modify the associated entity's information.</p>
-<p class="paragraph">Enter: Asynchronous Assets.</p>
+<p class="paragraph">Enter: Asynchronously Loaded Assets.</p>
 <p class="paragraph">Suppose now that you're in a situation where you don't know which assets you need before something (like a map) loads. In <a class="link" href="melodist.html">The Melodist</a>, this normally would not be a problem, because the game knows upfront (when loading a map) which entities are necessary, and therefore the assets that it must load. So, when a map loads, we could just wait until all of the required assets are loaded, either by dispatching jobs to load them on worker threads, or just doing it on the main thread and waiting. <a class="link" href="melodist.html">The Melodist</a> uses the first option, though, because generally the main thread should not stall at all for whatever reason, to prevent audio and game hiccups (the music, synthesis, and audio mixing all happen on the main thread).</p>
 <p class="paragraph">...But unfortunately, it isn't that simple. Imagine, now, that you introduce the ability to add entities to the world dynamically (like in a map editor or in a special map event). Our system must now also handle <i>partial entity initialization</i>—in other words, all of our code must be robust to unloaded assets that an entity depends on.</p>
 <p class="paragraph">In the case of a map editor, because it's a developer tool, we might get away with just blocking the editor from working while assets are being loaded (but this isn't ideal—I personally don't like compromising with tool quality, even though sometimes it is a necessity).</p>
@@ -99,7 +100,7 @@ Now, you might be saying... "Alright, hang on. You just broke something". And yo
 </li>
 </ul>
 <p class="paragraph"></p>
-<p class="paragraph">This is a lot of state to keep track of, and there's a lot of code that goes into making sure it is correctly maintained and used. This bothered me, and cost me a lot of debugging time in <a class="link" href="melodist.html">The Melodist</a>.</p>
+<p class="paragraph">This is a lot of state to keep track of, and there's a lot of code that goes into making sure it is correctly maintained and used. This bothered me, and cost me a lot of debugging time in <a class="link" href="melodist.html">The Melodist</a>. It also added a lot of state that had to be correct inside of a map file, and the more state that is required that must remain correct, the more chances there are for corruption, and the more difficult the system is to debug. Ideally, something like an index-to-ID and ID-to-index table could be produced from scratch given a set of entities. There was probably a better solution here than what I ended up doing, so I think my choices made a lot of this worse, but nonetheless it is a problem that requires solving.</p>
 <p class="paragraph">Now, I'll pose a question that I wrestled with when brainstorming about simpler solutions... Why do we care about entity memory being contiguous? What are the benefits that this option provides? What case does it optimize for?</p>
 <p class="paragraph">It shouldn't be too unclear—contiguous memory lets a loop over entities early-out:</p>
 <pre class="code">
@@ -107,7 +108,7 @@ Now, you might be saying... "Alright, hang on. You just broke something". And yo
 // entity_count could be much less than MAX_ENTITIES.
 for(u32 i = 0; i < entity_count; ++i)
 {
-    // Do something with entities[i]
+  // Do something with entities[i]
 }
 </pre>
 <p class="paragraph">
@@ -116,41 +117,45 @@ This seems obviously better for cases where <span class="inline_code">entity_cou
 <pre class="code">
 for(u32 i = 0; i < MAX_ENTITIES; ++i)
 {
-    if(entity_flags[i] & EntityFlag_Active)
-    {
-        // Do something with entities[i]...
-        // If and only if it's marked as active.
-    }
+  if(entity_flags[i] & EntityFlag_Active)
+  {
+    // Do something with entities[i]...
+    // If and only if it's marked as active.
+  }
 }
 </pre>
 <p class="paragraph">
 So, what've we done here? We'll get to the performance analysis in a bit, but we should notice that our loop has gotten more complex. Luckily, this kind of loop can be fairly easily rewritten to be just as easy as the other case.
 </p>
 <pre class="code">
-Entity *GetNextEntity(Entity *entity)
+b32 IncrementEntity(Entity **entity_ptr)
 {
-    Entity *result = 0;
-    
-    u32 entity_index = entity - entities;
-    for(; entity_index < MAX_ENTITIES; ++entity_index)
+  Entity *entity = *entity_ptr;
+  u32 start_index = 0;
+  if(entity != 0)
+  {
+    start_index = (entity - entities) + 1;
+  }
+  entity = 0;
+  for(u32 idx = start_index; idx < MAX_ENTITIES; idx += 1)
+  {
+    if(entity_flags[idx] & EntityFlag_Active)
     {
-        if(entity_flags[entity_index] & EntityFlag_Active)
-        {
-            result = entities + entity_index;
-            break;
-        }
+      entity = entities + idx;
+      break;
     }
-    
-    return result;
+  }
+  *entity_ptr = entity;
+  return !!entity;
 }
 </pre>
 <p class="paragraph">
 This function allows us to rewrite our loop as follows:
 </p>
 <pre class="code">
-for(Entity *entity = 0; entity = GetNextEntity(entity);)
+for(Entity *entity = 0; IncrementEntity(&entity);)
 {
-    // Use entity
+  // Use entity
 }
 </pre>
 <p class="paragraph">
@@ -159,17 +164,17 @@ Alright, great. So, we've definitely introduced some complexity by having the mo
 <p class="paragraph">We can't take pointers to non-permanent entities, however, because that entity could theoretically be removed and replaced by another entity, and then our pointer, while not being <i>invalid</i>, will not be what we expect it to be. In these cases, we still require something extra—some form of handle—for entities. One solution that can be used to prevent the case I mentioned is to have a handle that keeps track of both an index and a generation. The generation count can be incremented whenever a substantial change occurs—like entity removal—and if a handle refers to a stale generation, it will fail to resolve. This code would look something like:
 </p>
 <pre class="code">
-EntityHandle handle = EntityHandleInit(entity);
+EntityHandle handle = HandleFromEntity(entity);
 // Later...
-Entity *entity = GetEntityFromHandle(handle);
+Entity *entity = EntityFromHandle(handle);
 if(entity)
 {
-    // Entity pointer was properly resolved.
+  // Entity pointer was properly resolved.
 }
 else
 {
-    // Entity handle was invalid or out-of-date, so we don't
-    // have a valid entity anymore.
+  // Entity handle was invalid or out-of-date, so we don't
+  // have a valid entity anymore.
 }
 </pre>
 <p class="paragraph">
@@ -189,24 +194,24 @@ This is actually a little bit of a robustness win over the contiguous case—if 
 <pre class="code">
 int DoEntityWork_Piggy(Entity *entity)
 {
-    int sum = 0;
-    for(int i = 0; i < sizeof(entity->data); ++i)
-    {
-        sum += entity->data[i];
-    }
-    entity->data[0] = 1;
-    entity->data[66] = 2;
-    entity->data[119] = 3;
-    return sum;
+  int sum = 0;
+  for(int i = 0; i < sizeof(entity->data); ++i)
+  {
+    sum += entity->data[i];
+  }
+  entity->data[0] = 1;
+  entity->data[66] = 2;
+  entity->data[119] = 3;
+  return sum;
 }
 </pre>
 <p class="paragraph">
 This procedure takes ~560 cycles on my machine, so it's just meant to serve as some pretty substantial work that needs to occur for each entity. This makes the update routine the bottleneck, instead of memory access. For the case where <i>memory access</i> is bottlenecking our routine, and our actual update work is much slimmer, I've prepared this alternate procedure:
 </p>
 <pre class="code">
-int DoEntityWork_WeightWatchers(Entity *entity)
+int DoEntityWork_Slim(Entity *entity)
 {
-    return entity->data[0] + 25;
+  return entity->data[0] + 25;
 }
 </pre>
 <p class="paragraph">
@@ -215,17 +220,17 @@ With these two procedures in mind, let's continue.</p>
 </p>
 <pre class="code">
 Empty Case (Contiguous, Piggy):
-1024 iterations, 27.488281 cycles (average)
+  1024 iterations, 27.488281 cycles (average)
 Empty Case (Sparse, Piggy):
-1024 iterations, 18786.892578 cycles (average)
+  1024 iterations, 18786.892578 cycles (average)
 Empty Case (Sparse with Iteration List, Piggy):
-1024 iterations, 27.524414 cycles (average)
+  1024 iterations, 27.524414 cycles (average)
 Empty Case (Contiguous, Weight Watchers):
-1024 iterations, 27.464844 cycles (average)
+  1024 iterations, 27.464844 cycles (average)
 Empty Case (Sparse, Weight Watchers):
-1024 iterations, 22555.677734 cycles (average)
+  1024 iterations, 22555.677734 cycles (average)
 Empty Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 25.426758 cycles (average)
+  1024 iterations, 25.426758 cycles (average)
 </pre>
 <p class="paragraph">
 Obviously, in this case, the weight of the update routine doesn't change anything significantly, because aren't calling it (there are no active entities). We can see here that we waste ~20,000 cycles with sparse entity memory. Let's say this is on a 2 GHz CPU, this comes out to about a 10 microsecond waste, just to give us an idea of the scale of waste we're dealing with.</p>
@@ -234,17 +239,17 @@ Obviously, in this case, the weight of the update routine doesn't change anythin
 </p>
 <pre class="code">
 Full Case (Contiguous, Piggy):
-1024 iterations, 2164290.577148 cycles (average)
+  1024 iterations, 2164290.577148 cycles (average)
 Full Case (Sparse, Piggy):
-1024 iterations, 2172001.588867 cycles (average)
+  1024 iterations, 2172001.588867 cycles (average)
 Full Case (Sparse with Iteration List, Piggy):
-1024 iterations, 2189763.810547 cycles (average)
+  1024 iterations, 2189763.810547 cycles (average)
 Full Case (Contiguous, Weight Watchers):
-1024 iterations, 26667.936523 cycles (average)
+  1024 iterations, 26667.936523 cycles (average)
 Full Case (Sparse, Weight Watchers):
-1024 iterations, 32269.322266 cycles (average)
+  1024 iterations, 32269.322266 cycles (average)
 Full Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 31268.362305 cycles (average)
+  1024 iterations, 31268.362305 cycles (average)
 </pre>
 <p class="paragraph">
 In this case we can pretty clearly see that there aren't substantial differences between contiguous and sparse storage, more-or-less because the sparse storage is has a sparseness of zero in the full case. We still see some cycle increases (that I found were relatively reliably reproduced). There seem to be ~5,000-10,000 cycles lost with sparse storage with both a piggy and super light-weight update function.</p>
@@ -255,17 +260,17 @@ In this case we can pretty clearly see that there aren't substantial differences
 </p>
 <pre class="code">
 Half-Full, Worst Case (Contiguous, Piggy):
-1024 iterations, 1114799.429688 cycles (average)
+  1024 iterations, 1114799.429688 cycles (average)
 Half-Full, Worst Case (Sparse, Piggy):
-1024 iterations, 1099689.594727 cycles (average)
+  1024 iterations, 1099689.594727 cycles (average)
 Half-Full, Worst Case (Sparse with Iteration List, Piggy):
-1024 iterations, 1108070.508789 cycles (average)
+  1024 iterations, 1108070.508789 cycles (average)
 Half-Full, Worst Case (Contiguous, Weight Watchers):
-1024 iterations, 13159.281250 cycles (average)
+  1024 iterations, 13159.281250 cycles (average)
 Half-Full, Worst Case (Sparse, Weight Watchers):
-1024 iterations, 29817.289062 cycles (average)
+  1024 iterations, 29817.289062 cycles (average)
 Half-Full, Worst Case (Sparse with Iteration List, Weight Watchers):
-1024 iterations, 16059.382812 cycles (average)
+  1024 iterations, 16059.382812 cycles (average)
 </pre>
 <p class="paragraph">
 In this case, the weight of our update routine makes a pretty big difference. When we are not bottlenecked by memory access, and instead by the update routine, we notice a very small difference between contiguous and sparse storage. However, when we are bottlenecked by memory access, we take a hit when we don't use an iteration list by roughly 2x. This is relatively expected, and I will again argue that this is not the common or interesting case.
@@ -279,7 +284,7 @@ So, what was learned? What was the point of any of this?</p>
 <p class="paragraph">This is all assuming that the entity tick will be the bottleneck of your game as well—for me, it has become increasingly clear that sparse entity storage fits <a class="link" href="melodist.html">The Melodist</a> very well. Entity updates are not the bottleneck in the game at this point, and this small change will dramatically simplify existing systems.</p>
 <p class="paragraph">I would suggest the following as a TL;DR for independent developers of smaller-scale games, like myself: I am almost 100% certain that your game is not bottlenecked by iterating entities, and it seems that sparse entity storage can make your systems significantly more robust, less error-prone, require less code and state to work correctly, and be more easily verified to work correctly.</p>
 <p class="paragraph">The best way to solve pointer invalidation is to not invalidate pointers, and sparse entity storage is a very useful tool in doing that; while it does have a (relatively inexpensive) price, it helps us solve an entire set of problems (pointer invalidation) in a much simpler way. When it comes to performance, games in this space can, <i>as a whole</i>, probably afford substantially more than a 10 microsecond penalty on an entity update tick.</p>
-<p class="paragraph">To wrap everything up: keep it simple whenever possible, avoid problems by not causing them, and understand your constraints.</p>
+<p class="paragraph">To wrap everything up, the things I've learned from all of this, and by doing what I'd call the <i>wrong</i> thing in <a class="link" href="melodist.html">The Melodist</a> first, are: keep it simple whenever possible, avoid problems by not causing them, and understand your constraints.</p>
 <p class="paragraph">Thanks for reading!
 </p>
 </div>

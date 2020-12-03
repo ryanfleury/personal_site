@@ -384,6 +384,8 @@ GeneratePageContent(DD_NodeTable *index_table, SiteInfo *site_info, PageInfo *pa
         {
             char *html_tag = "p";
             char *style = "paragraph";
+            DD_b32 split_by_double_newlines = 1;
+            
             if(!DD_NodeIsNil(DD_TagOnNode(node, DD_S8Lit("title"))))
             {
                 html_tag = "h1";
@@ -398,13 +400,22 @@ GeneratePageContent(DD_NodeTable *index_table, SiteInfo *site_info, PageInfo *pa
             {
                 html_tag = "pre";
                 style = "code";
+                split_by_double_newlines = 0;
             }
             
             DD_String8 splits[] =
             {
                 DD_S8Lit("\n\n"),
             };
-            DD_String8List strlist = DD_SplitString(node->string, sizeof(splits)/sizeof(splits[0]), splits);
+            DD_String8List strlist = {0};
+            if(split_by_double_newlines)
+            {
+                DD_PushStringListToList(&strlist, DD_SplitString(node->string, sizeof(splits)/sizeof(splits[0]), splits));
+            }
+            else
+            {
+                DD_PushStringToList(&strlist, node->string);
+            }
             
             for(DD_String8Node *strnode = strlist.first; strnode; strnode = strnode->next)
             {
