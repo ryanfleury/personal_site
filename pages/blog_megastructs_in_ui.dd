@@ -1,6 +1,0 @@
-title: "A Case Study of Megastructs In IMGUIs"
-desc:  """An overview of how I've made use of the "megastruct" technique, in this case in the implementation of a custom IMGUI."""
-date:  (2020/12/8)
-index: {"blog"}
-parent: "blog"
-header_image: "data/ui.png"

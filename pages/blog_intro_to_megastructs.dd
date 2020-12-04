@@ -1,6 +1,0 @@
-title: "Intro To Megastructs: Another Story About Simplicity"
-desc:  "An introduction to a technique I've started using in software architecture, which is based around critically examining the nature of the problem at hand, the benefits and tradeoffs of type systems, combinatorics, and flexibility."
-date:  (2020/12/2)
-index: {"blog"}
-parent: "blog"
-header_image: "data/uniformity_dion.png"
