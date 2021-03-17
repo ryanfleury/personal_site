@@ -1,6 +1,0 @@
-title: "DION"
-desc:  "A computing engine where compilers live closer to editors and other developer tools. Code is stored as a structured, abstract-syntax-tree-like representation instead of text files."
-index: {"projects"}
-parent: "projects"
-header_image: "data/dion.png"
-

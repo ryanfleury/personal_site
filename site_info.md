@@ -36,7 +36,7 @@ footer:
 <div class="separator reverse"></div>
 <div class="footer">
 <a class="header_link" href="https://github.com/ryanfleury">GitHub</a>
-<a class="header_link" href="https://youtube.com/delix">YouTube</a>
+<a class="header_link" href="https://youtube.com/ryanfleury">YouTube</a>
 <a class="header_link" href="https://twitter.com/ryanjfleury">Twitter</a>
 </div>
 """

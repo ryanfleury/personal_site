@@ -1,6 +1,0 @@
-title: "Data Desc"
-desc:  "A library that parses and provides helpers for a custom data description format, built around doing metaprogramming, data generation, and code generation with custom generator backends written by the user."
-index: {"projects"}
-parent: "projects"
-header_image: "data/telescope.png"
-
